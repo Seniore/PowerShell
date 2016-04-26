@@ -1,6 +1,6 @@
 #################
 #Script to create SRM network mappings
-#Author: Marcin@Raubal.pl
+#Author: Marcin_at_Raubal_pl
 #script is based on: http://www.wolowicz.info/2013/10/site-recovery-manager-configuration-export-with-srm-api-5-0/
 #################
 # Set variables
