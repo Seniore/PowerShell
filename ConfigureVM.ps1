@@ -29,10 +29,15 @@ Sleep 7
 }
 
 #=====main code
+
 #Sysprep
 $script = 'C:\Windows\System32\Sysprep\sysprep.exe /quiet /oobe /generalize /reboot'
 Invoke-VMScript -VM $VM -HostUser root -HostPassword $ESXiPass -GuestUser $VMUser -GuestPassword $VMPass -ScriptType bat -ScriptText $script -ErrorAction "SilentlyContinue"
 WaitForVM $VM
+
+#Set new hostname
+$script = "Rename-Computer -NewName $VM"
+Invoke-VMScript -VM $VM -HostUser root -HostPassword $ESXiPass -GuestUser $VMUser -GuestPassword $VMPass -ScriptType PowerShell -ScriptText $script -ErrorAction "SilentlyContinue"
 
 #Network Adapter Config
 $adapterCount = (Get-NetworkAdapter $VM).Count
@@ -46,7 +51,7 @@ if($adapterCount -eq 2) {
         Rename-NetAdapter -Name $_.Name -NewName "IR"
         Set-NetIPInterface -InterfaceIndex $_.ifIndex -AddressFamily IPv4 -InterfaceMetric 1
         Set-DNSClientServerAddress –interfaceIndex $_.ifIndex –ServerAddresses ('+$IR_DNS+')
-        Set-DnsClient –interfaceIndex $_.ifIndex -ConnectionSpecificSuffix ' + $Specific_Suffix +"
+        Set-DnsClient –interfaceIndex $_.ifIndex –RegisterThisConnectionAddress $False -ConnectionSpecificSuffix ' + $Specific_Suffix +"
         Set-DnsClientGlobalSetting -SuffixSearchList @(" + $DNS_Suffix + ')
         Disable-NetAdapterBinding -Name IR -DisplayName "Internet Protocol Version 6 (TCP/IPv6)"
          }'
@@ -56,10 +61,12 @@ if($adapterCount -eq 2) {
     $script =  'Get-NetAdapter | Where {$_.MacAddress -eq "' + $IBRAdapter.MacAddress.Replace(':','-') + '" } | %{
         New-NetIPAddress -InterfaceIndex $_.ifIndex -AddressFamily IPv4 –IPAddress ' + "$IBR_IP -PrefixLength $IBR_Mask" + '
         Rename-NetAdapter -Name $_.Name -NewName "IBR"
-        Set-DnsClient –interfaceIndex $_.ifIndex -ConnectionSpecificSuffix ' + $IBR_Specific_Suffix +'
+        Set-DnsClient –interfaceIndex $_.ifIndex –RegisterThisConnectionAddress $False -ConnectionSpecificSuffix ' + $IBR_Specific_Suffix +'
         Disable-NetAdapterBinding -Name IBR -DisplayName "Internet Protocol Version 6 (TCP/IPv6)"
          }'
     
     Invoke-VMScript -VM $VM -HostUser root -HostPassword $ESXiPass -GuestUser $VMUser -GuestPassword $VMPass -ScriptType PowerShell -ScriptText $script
-
 }
+
+
+
