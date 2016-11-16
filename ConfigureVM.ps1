@@ -51,7 +51,7 @@ if($adapterCount -eq 2) {
         Rename-NetAdapter -Name $_.Name -NewName "IR"
         Set-NetIPInterface -InterfaceIndex $_.ifIndex -AddressFamily IPv4 -InterfaceMetric 1
         Set-DNSClientServerAddress –interfaceIndex $_.ifIndex –ServerAddresses ('+$IR_DNS+')
-        Set-DnsClient –interfaceIndex $_.ifIndex –RegisterThisConnectionAddress $False -ConnectionSpecificSuffix ' + $Specific_Suffix +"
+        Set-DnsClient –interfaceIndex $_.ifIndex -RegisterThisConnectionsAddress $False -ConnectionSpecificSuffix ' + $Specific_Suffix +"
         Set-DnsClientGlobalSetting -SuffixSearchList @(" + $DNS_Suffix + ')
         Disable-NetAdapterBinding -Name IR -DisplayName "Internet Protocol Version 6 (TCP/IPv6)"
          }'
@@ -61,7 +61,7 @@ if($adapterCount -eq 2) {
     $script =  'Get-NetAdapter | Where {$_.MacAddress -eq "' + $IBRAdapter.MacAddress.Replace(':','-') + '" } | %{
         New-NetIPAddress -InterfaceIndex $_.ifIndex -AddressFamily IPv4 –IPAddress ' + "$IBR_IP -PrefixLength $IBR_Mask" + '
         Rename-NetAdapter -Name $_.Name -NewName "IBR"
-        Set-DnsClient –interfaceIndex $_.ifIndex –RegisterThisConnectionAddress $False -ConnectionSpecificSuffix ' + $IBR_Specific_Suffix +'
+        Set-DnsClient –interfaceIndex $_.ifIndex –RegisterThisConnectionsAddress $False -ConnectionSpecificSuffix ' + $IBR_Specific_Suffix +'
         Disable-NetAdapterBinding -Name IBR -DisplayName "Internet Protocol Version 6 (TCP/IPv6)"
          }'
     
