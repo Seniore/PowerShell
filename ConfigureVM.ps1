@@ -29,10 +29,24 @@ Sleep 7
 }
 
 #=====main code
-
+#Pre-check
+$gvm = Get-VM $VM
+#Check hostname
+if($gvm.Guest.HostName -notmatch '^WIN-.*') { Write-Warning "Suspissious hostname... Exiting here..."; 
+    #exit(1)
+   }
+else { Write-Host "VM name OK: " $gvm.Guest.HostName }
+#check IP address
+$nonAPIPA = $gvm.Guest.IPAddress | Where {$_ -notmatch '::' -and $_ -notmatch "^169.254"}
+$APIPA = $gvm.Guest.IPAddress | Where {$_ -notmatch '::' -and $_ -match "^169.254"}
+if($nonAPIPA.Count -ne 0 -and $APIPA -ne 2) { Write-Warning "Somethings wrong with the IPs... Exiting here..." ;
+    Write-Host $gvm.Guest.IPAddress | Where {$_ -notmatch '::'}
+    #exit(1)
+}
 #Sysprep
 $script = 'C:\Windows\System32\Sysprep\sysprep.exe /quiet /oobe /generalize /reboot'
 Invoke-VMScript -VM $VM -HostUser root -HostPassword $ESXiPass -GuestUser $VMUser -GuestPassword $VMPass -ScriptType bat -ScriptText $script -ErrorAction "SilentlyContinue"
+Start-Sleep 30
 WaitForVM $VM
 
 #Set new hostname
