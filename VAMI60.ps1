@@ -49,19 +49,22 @@ function Set-UseUnsafeHeaderParsing
 
 Set-UseUnsafeHeaderParsing -Enable
 
-<##################### Main code ###################>
+<############### Variables #########################>
 
 $updateISOPath = '[Crucial] ISO\VMware-vCenter-Server-Appliance-6.0.0.30800-9448190-patch-FP.iso'
+$updateISOPath = '[Crucial] ISO\VMware-vCenter-Server-Appliance-6.5.0.23000-10964411-patch-FP.iso'
 $vCenter = '192.168.0.18'
 $user = 'root'
 $password = 'VMware1!'
 $rebootWithoutAsking = $true
 
-$vCenterVM = 'psc6'
-$vcsaFQDN = 'psc.seniore.internal'
+$vCenterVM = 'vcenter65-1'
+$vcsaFQDN = 'vcenter65-1.seniore.internal'
 $manageUpdateURL = 'https://'+$vcsaFQDN+':5480/vami/backend/manage-update.py'
 $manageActionsURL = 'https://'+$vcsaFQDN+':5480/vami/backend/manage-actions.py'
 $summaryURL = 'https://'+$vcsaFQDN+':5480/vami/backend/summary.py'
+
+<##################### Main code ###################>
 
 Write-Host 'Connecting to managing vCenter'
 try {
@@ -170,6 +173,8 @@ $statusCode = ([xml]$r.Content).response.status.statusCode
 if($statusCode -eq 'failure') {
     Write-Warning 'Please check if update ISO is mounted to VCSA'
     #exit
+}else {
+    Write-Host "Found available update"
 }
 
 
@@ -185,8 +190,12 @@ $r = Invoke-WebRequest -Uri $summaryURL -Method Post -Headers $head -Body $data 
 $data = '<?xml version="1.0" encoding="utf-8"?><request><locale>en-US</locale>   <action>query</action>   <requestid>installUpdateCDROM</requestid>   <value id="thirdParty">false</value></request>'
 $r = Invoke-WebRequest -Uri $manageUpdateURL -Method Post -Headers $head -Body $data -WebSession $websession
 
-
+sleep 5
 ## Check update progress
+$lastPercent = 0
+$lastStep = ''
+$currentStep = "Starting update"
+$msgTable = @{}
 do {
     $data ='<?xml version="1.0" encoding="utf-8"?><request><locale>en-US</locale>   <action>query</action>   <requestid>getActiveUpdate</requestid></request>'
     try {
@@ -196,10 +205,47 @@ do {
      
     }
     $sx = [xml]$r.Content
+    
+    ### Parse response messages
+    $messages = $sx.response.value.value | Where-Object {$_.id -eq 'messages'}
+    $i  = $messages.Count
+    foreach($message in $messages) {
+        $msgTxt = ($message.value | Where-Object {$_.id -contains 'message'}).default_message
+        $msgID = $message.value.id | Where-Object {$_ -match 'com'}
+        $msgTime = ($message.value | Where-Object {$_.id -eq 'time'}).'#text'
+        if(-Not($msgTable.ContainsKey("$msgID"))) {
+            $msgTable["$msgID"] = @{}
+            $msgTable["$msgID"]['order'] = $i
+            $msgTable["$msgID"]['time'] = $msgTime
+            $msgTable["$msgID"]['text'] = $msgTxt
+            $msgTable["$msgID"]['status'] =  'new'
+        }
+        $i--
+    }
+
+    $sortedMsgTable = $msgTable.GetEnumerator() | Sort-Object { $_.Value.order }
+    if($sortedMsgTable) {
+        $currentStep = ($sortedMsgTable | select -Last 1).Value['text']
+        foreach ($h in $sortedMsgTable.GetEnumerator()) {
+            if($h.Value['status'] -eq 'new') {
+                $msgTimeConverted = [timezone]::CurrentTimeZone.ToLocalTime(([datetime]'1/1/1970').AddSeconds($h.Value.time))
+                #Write-Host "$($h.Name): $($h.Value)"
+                Write-Host "$([char]9830)" -ForegroundColor Green -NoNewline
+                Write-Host " ["$msgTimeConverted" ]" -NoNewline
+                Write-Host " "$h.Value.Text
+                $msgTable["$($h.Name)"]['status'] = 'old'
+            }
+        }
+    }
     $status = (([xml]$r.Content).response.value.value | Where {$_.id -eq 'status'}).'#text'
     $percentComplete = (([xml]$r.Content).response.value.value | Where {$_.id -eq 'percentComplete'}).'#text'
-    if($status) { Write-Host $status $percentComplete"%" }
-    sleep 30
+    if($status -and $lastPercent -ne $percentComplete -or $lastStep -ne $currentStep) { 
+        $lastPercent = $percentComplete
+        $lastStep = $currentStep
+        Write-Progress -Activity "Update in Progress." -Status "$percentComplete% Complete. $currentStep" -PercentComplete $percentComplete;
+    }
+
+    sleep 5
 }while($status -eq 'running') 
 
 ##Final progress check
@@ -235,3 +281,4 @@ if($statusCode -eq 'True') {
 else {
     Write-Host 'No reboot pending'
 }
+
