@@ -53,13 +53,15 @@ Set-UseUnsafeHeaderParsing -Enable
 
 $updateISOPath = '[Crucial] ISO\VMware-vCenter-Server-Appliance-6.0.0.30800-9448190-patch-FP.iso'
 $updateISOPath = '[Crucial] ISO\VMware-vCenter-Server-Appliance-6.5.0.23000-10964411-patch-FP.iso'
+$updateISOPath = '[Crucial] ISO\VMware-vCenter-Server-Appliance-6.0.0.30600-8874691-patch-FP.iso'
+
 $vCenter = '192.168.0.18'
 $user = 'root'
 $password = 'VMware1!'
 $rebootWithoutAsking = $true
 
-$vCenterVM = 'vcenter65-1'
-$vcsaFQDN = 'vcenter65-1.seniore.internal'
+$vCenterVM = 'psc6'
+$vcsaFQDN = 'psc.seniore.internal'
 $manageUpdateURL = 'https://'+$vcsaFQDN+':5480/vami/backend/manage-update.py'
 $manageActionsURL = 'https://'+$vcsaFQDN+':5480/vami/backend/manage-actions.py'
 $summaryURL = 'https://'+$vcsaFQDN+':5480/vami/backend/summary.py'
@@ -202,7 +204,10 @@ do {
     $r = Invoke-WebRequest -Uri $manageUpdateURL -Method Post -Headers $head -Body $data -WebSession $websession
     }
     catch {
-     
+        Write-Host 'Error connecting to VAMI'
+    }
+    if($r.Content -isnot [System.String]) {
+        continue
     }
     $sx = [xml]$r.Content
     
@@ -210,9 +215,12 @@ do {
     $messages = $sx.response.value.value | Where-Object {$_.id -eq 'messages'}
     $i  = $messages.Count
     foreach($message in $messages) {
-        $msgTxt = ($message.value | Where-Object {$_.id -contains 'message'}).default_message
-        $msgID = $message.value.id | Where-Object {$_ -match 'com'}
+        switch ($vcsaVersion.Substring(0,3)) {
+            '6.0' { $msgTxt = ($message.value | Where-Object {$_.id -contains 'message'}).'#text' }
+            '6.5' { $msgTxt = ($message.value | Where-Object {$_.id -contains 'message'}).default_message }
+            }
         $msgTime = ($message.value | Where-Object {$_.id -eq 'time'}).'#text'
+        $msgID = new-object System.Security.Cryptography.MD5CryptoServiceProvider | ForEach-Object {$_.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($msgTime+$msgTxt))} | ForEach-Object {$_.ToString("x2")}
         if(-Not($msgTable.ContainsKey("$msgID"))) {
             $msgTable["$msgID"] = @{}
             $msgTable["$msgID"]['order'] = $i
@@ -237,6 +245,7 @@ do {
             }
         }
     }
+    
     $status = (([xml]$r.Content).response.value.value | Where {$_.id -eq 'status'}).'#text'
     $percentComplete = (([xml]$r.Content).response.value.value | Where {$_.id -eq 'percentComplete'}).'#text'
     if($status -and $lastPercent -ne $percentComplete -or $lastStep -ne $currentStep) { 
@@ -244,7 +253,8 @@ do {
         $lastStep = $currentStep
         Write-Progress -Activity "Update in Progress." -Status "$percentComplete% Complete. $currentStep" -PercentComplete $percentComplete;
     }
-
+    
+     
     sleep 5
 }while($status -eq 'running') 
 
